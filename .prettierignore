@@ -1,0 +1,13 @@
+.github
+coverage
+dist
+docs
+node_modules
+.gitignore
+.prettierrc
+eslint.config.mjs
+package-lock.json
+package.json
+README.md
+tsconfig.json
+typedoc.json
