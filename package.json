@@ -32,6 +32,7 @@
   "dependencies": {
     "chalk": "^5.4.1",
     "fs": "^0.0.1-security",
+    "net": "^1.0.2",
     "uuid": "^11.1.0",
     "yargs": "^17.7.2"
   }

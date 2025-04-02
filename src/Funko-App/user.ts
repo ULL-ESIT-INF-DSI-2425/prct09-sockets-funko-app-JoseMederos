@@ -12,11 +12,13 @@ export class User {
    * Funcion que añade un Funko a la colección llamando a addFunko.
    * @param funko - funko a añadir
    */
-  addFunkoToCollection(funko: FunkoModel): void {
+  addFunkoToCollection(funko: FunkoModel): boolean {
     if (this.collection.addFunko(funko)) {
       console.log(chalk.green(`Funko with ID ${funko.id} has been added to the collection`));
+      return true;
     } else {
-      throw new Error(`Funko with ID ${funko.id} already exists.`);
+      console.error(chalk.red(`Funko with ID ${funko.id} already exists.`));
+      return false;
     }
   }
   /**
@@ -31,13 +33,29 @@ export class User {
    * Funcion que guarda la collecion del usuario en ficheros JSON
    */
   saveCollection(): void {
-    this.collection.saveToFile(this);
+    this.collection.saveToFile(this, (success: boolean) => {
+      if (success) {
+        console.log(chalk.green('Collection saved successfully.'));
+      } else {
+        console.error(chalk.red('Failed to save the collection.'));
+      }
+    });
   }
 
   /**
    * Funcion que carga los funkos guardados en los ficheros JSON a la coleccion.
    */
   loadCollection(): void {
-    this.collection.loadFromFile(this);
+    this.collection.loadFromFile(this, (success: boolean) => {
+      if (success) {
+        console.log(chalk.green('Collection loaded successfully.'));
+      } else {
+        console.error(chalk.red('Failed to load the collection.'));
+      }
+    });
+  }
+
+  getFunkos(): FunkoModel[] {
+    return this.collection.getFunkos();
   }
 }

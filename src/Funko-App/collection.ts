@@ -8,9 +8,13 @@ import { User } from "./user.js";
 const projectRoot = process.cwd();
 const dataDir = join(projectRoot, "data");
 
-if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir, { recursive: true });
-}
+fs.access(dataDir, fs.constants.F_OK, (err) => {
+  if (err) {
+    fs.mkdir(dataDir, { recursive: true }, (mkdirErr) => {
+      if (mkdirErr) console.error(chalk.red(`Error creating data directory: ${mkdirErr}`));
+    });
+  }
+});
 
 /**
  * Clase Collection donde se almacenan los funkos
@@ -23,30 +27,23 @@ export class Collection {
   }
 
   /**
-   * Getter de siguiente ID a asignar.
-   * @returns siguiete ID
+   * Method to get all Funkos in the collection.
+   * @returns An array of FunkoModel objects.
    */
+  getFunkos(): FunkoModel[] {
+    return this.funkos;
+  }
+
   getNextId(): number {
     if (this.funkos.length === 0) return 1;
     const maxId = Math.max(...this.funkos.map((f) => parseInt(f.id, 10)));
     return maxId + 1;
   }
 
-  /**
-   * Getter de un Funko por su ID
-   * @param id - id del funko a buscar.
-   * @returns objeto FunkoModel
-   */
   getFunkoById(id: string): FunkoModel | undefined {
     return this.funkos.find((f) => f.id === id);
   }
 
-  /**
-   * Metodo para añadir un funko a la coleccion
-   * @param funko - funko a añadir 
-   * @param preserveId - si se utiliza un id dado por el usuario
-   * @returns bool indicando el estado de la operacion
-   */
   addFunko(funko: FunkoModel, preserveId = false): boolean {
     if (!preserveId) {
       funko.id = this.getNextId().toString();
@@ -59,12 +56,6 @@ export class Collection {
     return true;
   }
 
-  /**
-   * Metodo para actualizar un Funko en la coleccion
-   * @param id - id del Funko a actualizar
-   * @param updatedData - nuevos datos
-   * @returns bool indicando el estado de la operacion
-   */
   updateFunko(
     id: string,
     updatedData: Partial<Omit<FunkoModel, "id">>,
@@ -87,36 +78,28 @@ export class Collection {
 
     return true;
   }
-  /**
-   * Metodo para borrar un Funko de la coleccion
-   * @param id - id del funko a borrar
-   * @param user - usuario a quien pertenece el funko
-   * @returns bool indicando el estado de la operacion
-   */
-  removeFunko(id: string, user: User): boolean {
+
+  removeFunko(id: string, user: User, callback: (success: boolean) => void): void {
     const funkoIndex = this.funkos.findIndex((f) => f.id === id);
     if (funkoIndex === -1) {
-      return false;
+      callback(false);
+      return;
     }
 
     const userDir = path.join(dataDir, user.username);
     const funkoFilePath = path.join(userDir, `${id}.json`);
 
-    try {
-      if (fs.existsSync(funkoFilePath)) {
-        fs.unlinkSync(funkoFilePath);
+    fs.unlink(funkoFilePath, (err) => {
+      if (err && err.code !== "ENOENT") {
+        callback(false);
+        return;
       }
       this.funkos.splice(funkoIndex, 1);
-      return true;
-    } catch {
-      return false;
-    }
+      callback(true);
+    });
   }
 
-  /**
-   * Metodo para mostrar los Funkos en la coleccion.
-   */
-  showFunkos() {
+  showFunkos(): void {
     this.funkos.forEach((funko) => {
       const marketValue = funko.getMarketValue();
       let marketColor: string;
@@ -144,56 +127,108 @@ export class Collection {
     });
   }
 
-  /**
-   * Metodo para guardar la coleccion en ficheros JSON
-   * @param user - usuario a quien pertenece la coleccion.
-   */
-  saveToFile(user: User): void {
+  saveToFile(user: User, callback: (success: boolean) => void): void {
     const userDir = path.join(dataDir, user.username);
 
-    try {
-      if (!fs.existsSync(userDir)) {
-        fs.mkdirSync(userDir, { recursive: true });
+    fs.access(userDir, fs.constants.F_OK, (err) => {
+      if (err) {
+        fs.mkdir(userDir, { recursive: true }, (mkdirErr) => {
+          if (mkdirErr) {
+            console.error(chalk.red(`Error creating user directory: ${mkdirErr}`));
+            callback(false);
+            return;
+          }
+          this.writeFunkosToFile(userDir, callback);
+        });
+      } else {
+        this.writeFunkosToFile(userDir, callback);
       }
-
-      this.funkos.forEach((funko) => {
-        const filePath = path.join(userDir, `${funko.id}.json`);
-        fs.writeFileSync(filePath, JSON.stringify(funko.toJSON(), null, 2));
-      });
-
-      
-    } catch {
-      return;
-    }
+    });
   }
 
-  /**
-   * Metodo para cargar la coleccion con los Funkos en los ficheros JSON
-   * @param user - usuario a quien cargar los Funkos.
-   */
-  loadFromFile(user: User): void {
-    const userDir = path.join(dataDir, user.username);
-    
-    if (!fs.existsSync(userDir)) {
-        fs.mkdirSync(userDir, { recursive: true });
-        this.funkos = [];
-        return;
+  private writeFunkosToFile(userDir: string, callback: (success: boolean) => void): void {
+    let success = true;
+    let pending = this.funkos.length;
+
+    if (pending === 0) {
+      callback(true);
+      return;
     }
 
-    this.funkos = [];
-    const funkoFiles = fs.readdirSync(userDir)
-        .filter(file => file.endsWith('.json'));
-
-    funkoFiles.forEach(file => {
-        try {
-            const filePath = path.join(userDir, file);
-            const fileData = fs.readFileSync(filePath, 'utf-8');
-            const funkoData = JSON.parse(fileData);
-            const funko = FunkoModel.fromJSON(funkoData);
-            this.addFunko(funko, true); // Preserve the loaded ID
-        } catch (error) {
-            console.error(chalk.red(`Error loading ${file}: ${error}`));
+    this.funkos.forEach((funko) => {
+      const filePath = path.join(userDir, `${funko.id}.json`);
+      fs.writeFile(filePath, JSON.stringify(funko.toJSON(), null, 2), (err) => {
+        if (err) {
+          console.error(chalk.red(`Error saving Funko: ${err}`));
+          success = false;
         }
+        pending -= 1;
+        if (pending === 0) {
+          callback(success);
+        }
+      });
     });
-}
+  }
+
+  loadFromFile(user: User, callback: (success: boolean) => void): void {
+    const userDir = path.join(dataDir, user.username);
+
+    fs.access(userDir, fs.constants.F_OK, (err) => {
+      if (err) {
+        fs.mkdir(userDir, { recursive: true }, (mkdirErr) => {
+          if (mkdirErr) {
+            console.error(chalk.red(`Error creating user directory: ${mkdirErr}`));
+            callback(false);
+            return;
+          }
+          this.funkos = [];
+          callback(true);
+        });
+      } else {
+        fs.readdir(userDir, (readErr, files) => {
+          if (readErr) {
+            console.error(chalk.red(`Error reading directory: ${readErr}`));
+            callback(false);
+            return;
+          }
+
+          const funkoFiles = files.filter((file) => file.endsWith(".json"));
+          this.funkos = [];
+          let pending = funkoFiles.length;
+
+          if (pending === 0) {
+            callback(true);
+            return;
+          }
+
+          funkoFiles.forEach((file) => {
+            const filePath = path.join(userDir, file);
+            fs.readFile(filePath, "utf-8", (readFileErr, data) => {
+              if (readFileErr) {
+                console.error(chalk.red(`Error reading file ${file}: ${readFileErr}`));
+                pending -= 1;
+                if (pending === 0) {
+                  callback(true);
+                }
+                return;
+              }
+
+              try {
+                const funkoData = JSON.parse(data);
+                const funko = FunkoModel.fromJSON(funkoData);
+                this.addFunko(funko, true); // Preserve the loaded ID
+              } catch (parseErr) {
+                console.error(chalk.red(`Error parsing file ${file}: ${parseErr}`));
+              }
+
+              pending -= 1;
+              if (pending === 0) {
+                callback(true);
+              }
+            });
+          });
+        });
+      }
+    });
+  }
 }
