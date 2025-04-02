@@ -4,12 +4,7 @@ import { Collection } from "./collection.js";
 import { User } from "./user.js";
 import { RequestType, ResponseType } from "./types.js";
 
-/**
- * This function creates a server that listens for incoming connections on port 60300.
- * Also handles incoming requests from clients and processes them using the FunkoManager class.
- * It handles requests to add, remove, update, show, and list Funkos.
- * The server responds to the client with the result of the operation.
- */
+
 const server = net.createServer({ allowHalfOpen: true }, (socket) => {
   console.log("Client connected");
 
@@ -189,9 +184,8 @@ const server = net.createServer({ allowHalfOpen: true }, (socket) => {
     console.error("Socket error:", err);
   });
 });
-/**
- * This function wait for a connection from a client.
- */
+
+
 server.listen(60300, () => {
   console.log("Server listening on port 60300");
 });
